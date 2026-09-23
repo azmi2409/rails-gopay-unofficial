@@ -4,7 +4,7 @@ Gem::Specification.new do |spec|
   spec.authors = ["Azmi"]
   spec.summary = "Unofficial GoBiz QRIS client"
   spec.description = "Generate dynamic QRIS codes and access GoBiz merchant transactions."
-  spec.homepage = "https://github.com/azmimoch/rails-gopay-unofficial"
+  spec.homepage = "https://github.com/azmi2409/rails-gopay-unofficial"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1"
   spec.files = Dir["lib/**/*.rb", "README.md", "LICENSE.txt"]
