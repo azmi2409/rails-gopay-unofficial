@@ -13,17 +13,23 @@ module Rails
           raise Error, "Enter the Indonesian phone number registered with GoBiz" unless phone_number.match?(/\A8\d{7,13}\z/)
 
           device_id = SecureRandom.uuid
-          data = request(:post, OTP_URL, headers: headers(device_id), body: { client_id: "go-biz-web-new", phone_number:, country_code: "62" })[:data] || {}
+          payload = request(:post, OTP_URL, headers: headers(device_id), body: { client_id: "go-biz-web-new", phone_number:, country_code: "62" })
+          raise Error, Response.error(payload) if Response.error(payload)
+
+          data = Response.data(payload)
           token = data[:otp_token] || data[:login_token]
           raise Error, "GoBiz returned no OTP token" if token.to_s.empty?
 
-          { phone_number:, otp_token: token, device_id:, expires_at: Time.now + Integer(data.fetch(:expires_in, 720)) }
+          { phone_number:, otp_token: token, device_id:, expires_at: Time.now + Unofficial.duration(data[:expires_in], 720) }
         end
 
         def verify_otp(phone_number:, otp_token:, device_id:, otp:)
           raise Error, "OTP must contain 4 to 8 digits" unless otp.to_s.match?(/\A\d{4,8}\z/)
 
-          tokens = request(:post, TOKEN_URL, headers: headers(device_id), body: { client_id: "go-biz-web-new", grant_type: "otp", data: { otp: otp.to_s, otp_token: } })[:data] || {}
+          payload = request(:post, TOKEN_URL, headers: headers(device_id), body: { client_id: "go-biz-web-new", grant_type: "otp", data: { otp: otp.to_s, otp_token: } })
+          raise Error, Response.error(payload) if Response.error(payload)
+
+          tokens = Response.data(payload)
           raise Error, "GoBiz returned no access token" if tokens[:access_token].to_s.empty?
           raise Error, "GoBiz returned no refresh token; reconnect and try again" if tokens[:refresh_token].to_s.empty?
 
@@ -31,7 +37,7 @@ module Rails
           {
             phone_number: "+62#{normalized_phone(phone_number)}", merchant_id: merchant.fetch(:id), outlet_name: merchant[:name],
             access_token: tokens[:access_token], refresh_token: tokens[:refresh_token], device_id:,
-            expires_at: Time.now + Integer(tokens.fetch(:expires_in, 86_400))
+            expires_at: Time.now + Unofficial.duration(tokens[:expires_in], 86_400)
           }
         end
 
@@ -42,7 +48,7 @@ module Rails
         end
 
         def merchant_profile(access_token, device_id)
-          data = request(:get, PROFILE_URL, headers: headers(device_id).merge("Authorization" => "Bearer #{access_token}"))[:data] || {}
+          data = Response.data(request(:get, PROFILE_URL, headers: headers(device_id).merge("Authorization" => "Bearer #{access_token}")))
           merchant = data[:merchant] || data[:merchants]&.first || data[:restaurants]&.first
           raise Error, "No GoBiz merchant found for this account" if merchant&.dig(:id).to_s.empty?
 
@@ -62,7 +68,7 @@ module Rails
           parsed = JSON.parse(response.body, symbolize_names: true)
           return parsed if response.code.to_i < 400
 
-          raise Error.new("GoBiz request failed (HTTP #{response.code})", response.code.to_i)
+          raise Error.new(Response.error(parsed) || "GoBiz request failed (HTTP #{response.code})", response.code.to_i)
         rescue JSON::ParserError
           raise Error, "GoBiz returned an invalid response"
         rescue Net::OpenTimeout, Net::ReadTimeout, SocketError, Errno::ECONNREFUSED => error

@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name = "rails-gopay-unofficial"
-  spec.version = "0.1.0"
+  spec.version = "0.1.1"
   spec.authors = ["Azmi"]
   spec.summary = "Unofficial GoBiz QRIS client"
   spec.description = "Generate dynamic QRIS codes and access GoBiz merchant transactions."

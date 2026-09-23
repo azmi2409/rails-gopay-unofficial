@@ -20,12 +20,19 @@ module Rails
         def configure
           yield configuration
         end
+
+        def duration(value, fallback)
+          value.nil? ? fallback : Integer(value)
+        rescue ArgumentError, TypeError
+          fallback
+        end
       end
     end
   end
 end
 
 require_relative "unofficial/error"
+require_relative "unofficial/response"
 require_relative "unofficial/qris"
 require_relative "unofficial/client"
 require_relative "unofficial/setup"

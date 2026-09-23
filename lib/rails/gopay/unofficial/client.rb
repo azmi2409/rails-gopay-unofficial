@@ -10,8 +10,6 @@ module Rails
         APP_VERSION = "platform-v3.111.0-1708bc9a"
 
         def initialize(access_token:, refresh_token:, merchant_id:, phone_number: Unofficial.configuration.phone_number, device_id: nil, expires_at: nil)
-          raise Error, "GoPay phone number is not configured" if phone_number.to_s.empty?
-
           @access_token = access_token
           @refresh_token = refresh_token
           @merchant_id = merchant_id
@@ -32,17 +30,22 @@ module Rails
         end
 
         def refresh!
+          raise Error, "GoPay refresh token is not configured" if refresh_token.to_s.empty?
           raise Error, "Original GoBiz device ID is missing; reconnect with OTP" if device_id.to_s.strip.empty?
+          raise Error, "GoPay phone number is not configured" if normalized_phone.empty?
 
-          data = request(:post, TOKEN_URL, headers: gobiz_headers, body: {
+          payload = request(:post, TOKEN_URL, headers: gobiz_headers, body: {
             client_id: "go-biz-web-new", grant_type: "refresh_token",
             data: { refresh_token: refresh_token, phone_number: normalized_phone, country_code: "62" }
-          })[:data] || {}
+          })
+          raise Error, Response.error(payload) if Response.error(payload)
+
+          data = Response.data(payload)
           raise Error, "GoBiz returned no access token" if data[:access_token].to_s.empty?
 
           @access_token = data[:access_token]
           @refresh_token = data[:refresh_token] unless data[:refresh_token].to_s.empty?
-          @expires_at = Time.now + Integer(data.fetch(:expires_in, 86_400))
+          @expires_at = Time.now + Unofficial.duration(data[:expires_in], 86_400)
           self
         end
 
@@ -83,7 +86,7 @@ module Rails
           }, raise_on_error: false)
           status = response.delete(:_status)
           return response unless status
-          raise Error.new("GoPay request failed", status) unless status == 401 && !retried
+          raise Error.new(Response.error(response) || "GoPay request failed", status) unless status == 401 && !retried
 
           refresh!
           transactions_page(start_time:, end_time:, offset:, retried: true)
@@ -122,7 +125,7 @@ module Rails
           return parsed if response.code.to_i < 400
           return parsed.merge(_status: response.code.to_i) unless raise_on_error
 
-          raise Error.new("GoPay request failed", response.code.to_i)
+          raise Error.new(Response.error(parsed) || "GoPay request failed", response.code.to_i)
         rescue JSON::ParserError
           raise Error, "GoPay returned an invalid response"
         rescue Net::OpenTimeout, Net::ReadTimeout, SocketError, Errno::ECONNREFUSED => error
